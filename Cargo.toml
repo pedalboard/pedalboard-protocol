@@ -1,0 +1,11 @@
+[package]
+name = "pedalboard-protocol"
+version = "0.1.0"
+edition = "2021"
+categories = ["no-std", "embedded"]
+
+[dependencies]
+heapless = "0.9.3"
+
+[features]
+default = []
