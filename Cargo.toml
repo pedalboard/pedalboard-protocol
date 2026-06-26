@@ -5,7 +5,9 @@ edition = "2021"
 categories = ["no-std", "embedded"]
 
 [dependencies]
-heapless = "0.9.3"
+heapless = { version = "0.9.3", features = ["serde"] }
+serde = { version = "1", default-features = false, features = ["derive"] }
+postcard = { version = "1.1.1", default-features = false }
 
 [features]
 default = []
