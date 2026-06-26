@@ -1,0 +1,147 @@
+# Pre-OpenDeck pedalboard configuration, converted from hardcoded firmware modes.
+#
+# Hardware: Plethora X (channel 2), RC-500 looper (channel 1),
+#           pedalboard-audio soundcard (channel 3)
+#
+# Mode switching: Vol encoder button cycles through presets.
+# Mon LED: flashes green on MIDI output.
+
+presets:
+  - name: "Live FX"
+    buttons:
+      A:
+        label: "Board 1"
+        color: { on: blue, off: off }
+        mode: radio_group(1)
+        on_press:
+          # Plethora GoToBoard(1): reset hot knobs + PC 0
+          - { cc: 102, value: 0, channel: 2 }
+          - { cc: 103, value: 0, channel: 2 }
+          - { cc: 104, value: 0, channel: 2 }
+          - { program_change: 0, channel: 2 }
+      B:
+        label: "Board 2"
+        color: { on: green, off: off }
+        mode: radio_group(1)
+        on_press:
+          - { cc: 102, value: 0, channel: 2 }
+          - { cc: 103, value: 0, channel: 2 }
+          - { cc: 104, value: 0, channel: 2 }
+          - { program_change: 1, channel: 2 }
+      C:
+        label: "Board 3"
+        color: { on: green, off: off }
+        mode: radio_group(1)
+        on_press:
+          - { cc: 102, value: 0, channel: 2 }
+          - { cc: 103, value: 0, channel: 2 }
+          - { cc: 104, value: 0, channel: 2 }
+          - { program_change: 2, channel: 2 }
+      D:
+        label: "Next"
+        color: { on: off, off: off }
+        mode: momentary
+        on_press:
+          - { cc: 95, value: 127, channel: 2 }
+      E:
+        label: "Prev"
+        color: { on: off, off: off }
+        mode: momentary
+        on_press:
+          - { cc: 94, value: 127, channel: 2 }
+      F:
+        label: "Board 4"
+        color: { on: magenta, off: off }
+        mode: radio_group(1)
+        on_press:
+          - { cc: 102, value: 0, channel: 2 }
+          - { cc: 103, value: 0, channel: 2 }
+          - { cc: 104, value: 0, channel: 2 }
+          - { program_change: 3, channel: 2 }
+    encoders:
+      Vol: { label: "Vol", cc: 7, channel: 3, min: 0, max: 127 }
+      Gain: { label: "Gain", cc: 1, channel: 3, min: 0, max: 127 }
+    analog:
+      Exp1: { label: "Output", cc: 7, channel: 3, min: 0, max: 127 }
+
+  - name: "Looper"
+    buttons:
+      A:
+        label: "Rhythm"
+        color: { on: blue, off: off }
+        mode: toggle
+        on_press:
+          # RC-500 ToggleRhythm: CC4 127 then 1
+          - { cc: 4, value: 127, channel: 1 }
+          - { cc: 4, value: 1, channel: 1 }
+      B:
+        label: "Vari"
+        color: { on: blue, off: off }
+        mode: toggle
+        on_press:
+          # RC-500 RhythmVariation: CC5 127 then 1
+          - { cc: 5, value: 127, channel: 1 }
+          - { cc: 5, value: 1, channel: 1 }
+      D:
+        label: "Mem+"
+        color: { on: off, off: off }
+        mode: momentary
+        on_press:
+          # RC-500 Mem Up: CC1 127 then 1
+          - { cc: 1, value: 127, channel: 1 }
+          - { cc: 1, value: 1, channel: 1 }
+      E:
+        label: "Mem-"
+        color: { on: off, off: off }
+        mode: momentary
+        on_press:
+          # RC-500 Mem Down: CC2 127 then 1
+          - { cc: 2, value: 127, channel: 1 }
+          - { cc: 2, value: 1, channel: 1 }
+      F:
+        label: "Clear"
+        color: { on: red, off: off }
+        mode: momentary
+        on_press:
+          # RC-500 ClearCurrent: CC3 127 then 1
+          - { cc: 3, value: 127, channel: 1 }
+          - { cc: 3, value: 1, channel: 1 }
+          # Also reset toggle LEDs for A and B
+          - { set_led: { color: off } }
+    encoders:
+      Vol: { label: "Level", cc: 6, channel: 1, min: 0, max: 127 }
+      Gain: { label: "Gain", cc: 1, channel: 3, min: 0, max: 127 }
+    analog:
+      Exp1: { label: "Ch Level", cc: 6, channel: 1, min: 0, max: 127 }
+
+  - name: "Setup"
+    buttons:
+      A:
+        label: "Pat+"
+        color: { on: magenta, off: off }
+        mode: momentary
+        on_press:
+          # RC-500 RhythmPattern Up: CC7 cycles through value table
+          - { cc: 7, value: 127, channel: 1 }
+      B:
+        label: "Pat-"
+        color: { on: magenta, off: off }
+        mode: momentary
+        on_press:
+          - { cc: 7, value: 0, channel: 1 }
+      D:
+        label: "Kit+"
+        color: { on: cyan, off: off }
+        mode: momentary
+        on_press:
+          # RC-500 DrumKit Up: CC8 cycles through value table
+          - { cc: 8, value: 127, channel: 1 }
+      E:
+        label: "Kit-"
+        color: { on: cyan, off: off }
+        mode: momentary
+        on_press:
+          - { cc: 8, value: 0, channel: 1 }
+    encoders:
+      Vol: { label: "Vol", cc: 7, channel: 3, min: 0, max: 127 }
+      Gain: { label: "Gain", cc: 1, channel: 3, min: 0, max: 127 }

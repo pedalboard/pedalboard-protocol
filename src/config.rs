@@ -3,11 +3,12 @@
 use heapless::{String, Vec};
 use serde::{Deserialize, Serialize};
 
-/// Maximum presets in a setlist.
 pub const MAX_PRESETS: usize = 32;
 pub const MAX_BUTTONS: usize = 6;
 pub const MAX_ENCODERS: usize = 2;
+pub const MAX_ANALOG: usize = 2;
 pub const MAX_LABEL_LEN: usize = 16;
+pub const MAX_ACTIONS: usize = 8;
 
 pub type Label = String<MAX_LABEL_LEN>;
 
@@ -21,35 +22,96 @@ pub struct Preset {
     pub name: Label,
     pub buttons: Vec<ButtonConfig, MAX_BUTTONS>,
     pub encoders: Vec<EncoderConfig, MAX_ENCODERS>,
+    pub analog: Vec<AnalogConfig, MAX_ANALOG>,
 }
+
+// --- Buttons ---
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ButtonConfig {
     pub label: Label,
-    pub action: ButtonAction,
-    pub color: Color,
-    pub behavior: Behavior,
+    pub color: LedConfig,
+    pub mode: ButtonMode,
+    pub on_press: Vec<Action, MAX_ACTIONS>,
+    pub on_release: Vec<Action, MAX_ACTIONS>,
+    pub on_long_press: Vec<Action, MAX_ACTIONS>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ButtonAction {
-    None,
-    Note { note: u8, channel: u8 },
-    Cc { cc: u8, value: u8, channel: u8 },
-    ProgramChange { program: u8, channel: u8 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Behavior {
+pub enum ButtonMode {
+    /// Fire on_press once per press
     Momentary,
+    /// Alternate between on_press (pos 1) and on_release (pos 2)
     Toggle,
+    /// Only one button in the group can be active (others deactivate)
+    RadioGroup(u8),
 }
+
+// --- Actions (Morningstar-style message list) ---
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Action {
+    /// Control Change
+    Cc { cc: u8, value: u8, channel: u8 },
+    /// Program Change
+    ProgramChange { program: u8, channel: u8 },
+    /// Note On (velocity 127) — released on button release for momentary
+    NoteOn { note: u8, channel: u8 },
+    /// Note Off
+    NoteOff { note: u8, channel: u8 },
+    /// CC with toggled value (sends value_a first time, value_b next)
+    CcToggle { cc: u8, value_a: u8, value_b: u8, channel: u8 },
+    /// Set LED state (for sequencing LED changes in action lists)
+    SetLed { color: Color, animation: LedAnimation },
+    /// Delay in ms between actions in a sequence
+    Delay(u16),
+    /// Switch to preset by index
+    PresetSelect(u8),
+    /// Next preset
+    PresetNext,
+    /// Previous preset
+    PresetPrev,
+    /// Bank up (scroll preset page)
+    BankUp,
+    /// Bank down
+    BankDown,
+}
+
+// --- Encoders ---
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncoderConfig {
     pub label: Label,
-    pub cc: u16,
+    pub action: EncoderAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EncoderAction {
+    Cc { cc: u16, channel: u8, min: u8, max: u8 },
+    /// Two separate CC values for CW/CCW (e.g. relative encoding)
+    CcRelative { cc: u8, channel: u8, increment: u8, decrement: u8 },
+    PresetScroll,
+}
+
+// --- Analog (expression pedals) ---
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnalogConfig {
+    pub label: Label,
+    pub cc: u8,
     pub channel: u8,
+    pub min: u8,
+    pub max: u8,
+}
+
+// --- LED ---
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LedConfig {
+    /// Color when active/on
+    pub on: Color,
+    /// Color when inactive/off (None = LED off)
+    pub off: Color,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,7 +124,19 @@ pub enum Color {
     Cyan,
     Magenta,
     White,
+    Orange,
+    Purple,
+    Custom(u8, u8, u8), // RGB
 }
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LedAnimation {
+    Solid,
+    Blink,
+    Pulse,
+}
+
+// --- Defaults ---
 
 impl Default for Color {
     fn default() -> Self {
@@ -70,15 +144,24 @@ impl Default for Color {
     }
 }
 
-impl Default for Behavior {
+impl Default for LedConfig {
     fn default() -> Self {
-        Behavior::Momentary
+        LedConfig {
+            on: Color::Off,
+            off: Color::Off,
+        }
     }
 }
 
-impl Default for ButtonAction {
+impl Default for ButtonMode {
     fn default() -> Self {
-        ButtonAction::None
+        ButtonMode::Momentary
+    }
+}
+
+impl Default for LedAnimation {
+    fn default() -> Self {
+        LedAnimation::Solid
     }
 }
 
@@ -87,81 +170,91 @@ mod tests {
     use super::*;
 
     #[test]
-    fn serialize_roundtrip() {
+    fn serialize_roundtrip_morningstar_style() {
         let config = Config {
             presets: {
                 let mut p = Vec::new();
-                p.push(Preset {
+                let _ = p.push(Preset {
                     name: Label::try_from("Live FX").unwrap(),
                     buttons: {
                         let mut b = Vec::new();
-                        b.push(ButtonConfig {
+                        let _ = b.push(ButtonConfig {
                             label: Label::try_from("Board 1").unwrap(),
-                            action: ButtonAction::ProgramChange {
-                                program: 0,
-                                channel: 2,
+                            color: LedConfig {
+                                on: Color::Blue,
+                                off: Color::Off,
                             },
-                            color: Color::Blue,
-                            behavior: Behavior::Momentary,
-                        })
-                        .unwrap();
+                            mode: ButtonMode::RadioGroup(1),
+                            on_press: {
+                                let mut a = Vec::new();
+                                let _ = a.push(Action::ProgramChange { program: 0, channel: 2 });
+                                let _ = a.push(Action::SetLed {
+                                    color: Color::Blue,
+                                    animation: LedAnimation::Solid,
+                                });
+                                a
+                            },
+                            on_release: Vec::new(),
+                            on_long_press: Vec::new(),
+                        });
                         b
                     },
                     encoders: {
                         let mut e = Vec::new();
-                        e.push(EncoderConfig {
+                        let _ = e.push(EncoderConfig {
                             label: Label::try_from("Vol").unwrap(),
-                            cc: 7,
-                            channel: 1,
-                        })
-                        .unwrap();
+                            action: EncoderAction::Cc {
+                                cc: 7,
+                                channel: 1,
+                                min: 0,
+                                max: 127,
+                            },
+                        });
                         e
                     },
-                })
-                .unwrap();
+                    analog: Vec::new(),
+                });
                 p
             },
         };
 
-        let mut buf = [0u8; 256];
+        let mut buf = [0u8; 512];
         let bytes = postcard::to_slice(&config, &mut buf).unwrap();
         let decoded: Config = postcard::from_bytes(bytes).unwrap();
         assert_eq!(config, decoded);
     }
 
     #[test]
-    fn compact_size() {
-        // A single preset with one button should be small
-        let config = Config {
-            presets: {
-                let mut p = Vec::new();
-                p.push(Preset {
-                    name: Label::try_from("Test").unwrap(),
-                    buttons: {
-                        let mut b = Vec::new();
-                        b.push(ButtonConfig {
-                            label: Label::try_from("A").unwrap(),
-                            action: ButtonAction::Cc {
-                                cc: 80,
-                                value: 127,
-                                channel: 1,
-                            },
-                            color: Color::Green,
-                            behavior: Behavior::Toggle,
-                        })
-                        .unwrap();
-                        b
-                    },
-                    encoders: Vec::new(),
-                })
-                .unwrap();
-                p
+    fn multi_action_button() {
+        // Morningstar-style: button sends PC + CC + delay + CC
+        let btn = ButtonConfig {
+            label: Label::try_from("Scene 1").unwrap(),
+            color: LedConfig {
+                on: Color::Green,
+                off: Color::Off,
+            },
+            mode: ButtonMode::Momentary,
+            on_press: {
+                let mut a = Vec::new();
+                let _ = a.push(Action::ProgramChange { program: 0, channel: 1 });
+                let _ = a.push(Action::Cc { cc: 69, value: 127, channel: 1 });
+                let _ = a.push(Action::Delay(50));
+                let _ = a.push(Action::Cc { cc: 70, value: 0, channel: 1 });
+                a
+            },
+            on_release: Vec::new(),
+            on_long_press: {
+                let mut a = Vec::new();
+                let _ = a.push(Action::PresetNext);
+                a
             },
         };
 
         let mut buf = [0u8; 256];
-        let bytes = postcard::to_slice(&config, &mut buf).unwrap();
-        // Should be very compact — well under 50 bytes for this
-        assert!(bytes.len() < 50, "got {} bytes", bytes.len());
+        let bytes = postcard::to_slice(&btn, &mut buf).unwrap();
+        assert!(bytes.len() < 80);
+        let decoded: ButtonConfig = postcard::from_bytes(bytes).unwrap();
+        assert_eq!(btn, decoded);
     }
 }
+
