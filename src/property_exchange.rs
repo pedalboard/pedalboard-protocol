@@ -20,6 +20,10 @@ use heapless::Vec;
 const UNIVERSAL_SYSEX: u8 = 0x7E;
 const SUB_ID1_MIDI_CI: u8 = 0x0D;
 
+/// Sub-ID2: Inquiry Get Property Data (MIDI-CI 1.2)
+pub const PE_GET_INQUIRY: u8 = 0x34;
+/// Sub-ID2: Reply to Get Property Data
+pub const PE_GET_REPLY: u8 = 0x35;
 /// Sub-ID2: Inquiry Set Property Data (MIDI-CI 1.2)
 pub const PE_SET_INQUIRY: u8 = 0x36;
 /// Sub-ID2: Reply to Set Property Data
@@ -157,6 +161,106 @@ pub fn build_set_inquiry(
     let _ = msg.push(PE_SET_INQUIRY);
     let _ = msg.push(CI_VERSION);
     for &b in &source_muid {
+        let _ = msg.push(b);
+    }
+    for &b in &dest_muid {
+        let _ = msg.push(b);
+    }
+    let _ = msg.push(req_id);
+    // header_len = 1 (resource byte)
+    let _ = msg.push(0x01);
+    let _ = msg.push(0x00);
+    let _ = msg.push(resource);
+    // num_chunks = 1, chunk_num = 1
+    let _ = msg.push(0x01);
+    let _ = msg.push(0x00);
+    let _ = msg.push(0x01);
+    let _ = msg.push(0x00);
+    // body_len
+    let _ = msg.push((body.len() & 0x7F) as u8);
+    let _ = msg.push(((body.len() >> 7) & 0x7F) as u8);
+    for &b in body {
+        let _ = msg.push(b);
+    }
+    let _ = msg.push(0xF7);
+    msg
+}
+
+/// Check if the message is a Get Property Inquiry.
+pub fn is_get_property(buf: &[u8]) -> bool {
+    is_ci_message(buf) && buf[4] == PE_GET_INQUIRY
+}
+
+/// Extract the resource identifier from a Get Property Inquiry.
+pub fn extract_get_resource(buf: &[u8]) -> Option<u8> {
+    if !is_get_property(buf) || buf.len() < 16 {
+        return None;
+    }
+    let pos = 15;
+    if pos + 2 > buf.len() {
+        return None;
+    }
+    let header_len = (buf[pos] as usize) | ((buf[pos + 1] as usize) << 7);
+    if header_len > 0 && pos + 2 < buf.len() {
+        Some(buf[pos + 2])
+    } else {
+        Some(0)
+    }
+}
+
+/// Build a Get Property Inquiry message (CLI → device).
+pub fn build_get_inquiry(
+    source_muid: [u8; 4],
+    dest_muid: [u8; 4],
+    req_id: u8,
+    resource: u8,
+) -> Vec<u8, 32> {
+    let mut msg: Vec<u8, 32> = Vec::new();
+    let _ = msg.push(0xF0);
+    let _ = msg.push(UNIVERSAL_SYSEX);
+    let _ = msg.push(0x7F);
+    let _ = msg.push(SUB_ID1_MIDI_CI);
+    let _ = msg.push(PE_GET_INQUIRY);
+    let _ = msg.push(CI_VERSION);
+    for &b in &source_muid {
+        let _ = msg.push(b);
+    }
+    for &b in &dest_muid {
+        let _ = msg.push(b);
+    }
+    let _ = msg.push(req_id);
+    // header_len = 1 (resource byte)
+    let _ = msg.push(0x01);
+    let _ = msg.push(0x00);
+    let _ = msg.push(resource);
+    // num_chunks = 1, chunk_num = 1
+    let _ = msg.push(0x01);
+    let _ = msg.push(0x00);
+    let _ = msg.push(0x01);
+    let _ = msg.push(0x00);
+    // body_len = 0
+    let _ = msg.push(0x00);
+    let _ = msg.push(0x00);
+    let _ = msg.push(0xF7);
+    msg
+}
+
+/// Build a Get Property Reply with body data.
+pub fn build_get_reply(
+    device_muid: [u8; 4],
+    dest_muid: [u8; 4],
+    req_id: u8,
+    resource: u8,
+    body: &[u8],
+) -> Vec<u8, 256> {
+    let mut msg: Vec<u8, 256> = Vec::new();
+    let _ = msg.push(0xF0);
+    let _ = msg.push(UNIVERSAL_SYSEX);
+    let _ = msg.push(0x7F);
+    let _ = msg.push(SUB_ID1_MIDI_CI);
+    let _ = msg.push(PE_GET_REPLY);
+    let _ = msg.push(CI_VERSION);
+    for &b in &device_muid {
         let _ = msg.push(b);
     }
     for &b in &dest_muid {
