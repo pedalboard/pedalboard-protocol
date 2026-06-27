@@ -9,6 +9,7 @@ pub const MAX_ENCODERS: usize = 2;
 pub const MAX_ANALOG: usize = 2;
 pub const MAX_LABEL_LEN: usize = 16;
 pub const MAX_ACTIONS: usize = 8;
+pub const MAX_CYCLE_VALUES: usize = 12;
 
 pub type Label = String<MAX_LABEL_LEN>;
 
@@ -35,6 +36,8 @@ pub struct ButtonConfig {
     pub on_press: Vec<Action, MAX_ACTIONS>,
     pub on_release: Vec<Action, MAX_ACTIONS>,
     pub on_long_press: Vec<Action, MAX_ACTIONS>,
+    #[serde(default)]
+    pub cycle_values: Vec<u8, MAX_CYCLE_VALUES>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +70,8 @@ pub enum Action {
         value_b: u8,
         channel: u8,
     },
+    /// CC cycling through button's cycle_values list on each press
+    CcCycle { cc: u8, channel: u8, reverse: bool },
     /// Set LED state (for sequencing LED changes in action lists)
     SetLed {
         color: Color,
@@ -202,6 +207,7 @@ mod tests {
                             },
                             on_release: Vec::new(),
                             on_long_press: Vec::new(),
+                            cycle_values: Vec::new(),
                         });
                         b
                     },
@@ -265,6 +271,7 @@ mod tests {
                 let _ = a.push(Action::PresetNext);
                 a
             },
+            cycle_values: Vec::new(),
         };
 
         let mut buf = [0u8; 256];
