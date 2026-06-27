@@ -189,7 +189,13 @@ mod tests {
     #[test]
     fn roundtrip_set_property() {
         let payload = b"hello";
-        let msg = build_set_inquiry([0x10, 0x20, 0x30, 0x40], [0x01, 0x02, 0x03, 0x04], 0x07, 3, payload);
+        let msg = build_set_inquiry(
+            [0x10, 0x20, 0x30, 0x40],
+            [0x01, 0x02, 0x03, 0x04],
+            0x07,
+            3,
+            payload,
+        );
 
         assert!(is_ci_message(&msg));
         assert!(is_set_property(&msg));
@@ -229,7 +235,7 @@ mod tests {
             let _ = msg.push(b);
         }
         let _ = msg.push(0x01); // request_id
-        // header_len = 3
+                                // header_len = 3
         let _ = msg.push(0x03);
         let _ = msg.push(0x00);
         for &b in b"abc" {

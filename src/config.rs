@@ -37,9 +37,10 @@ pub struct ButtonConfig {
     pub on_long_press: Vec<Action, MAX_ACTIONS>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ButtonMode {
     /// Fire on_press once per press
+    #[default]
     Momentary,
     /// Alternate between on_press (pos 1) and on_release (pos 2)
     Toggle,
@@ -60,9 +61,17 @@ pub enum Action {
     /// Note Off
     NoteOff { note: u8, channel: u8 },
     /// CC with toggled value (sends value_a first time, value_b next)
-    CcToggle { cc: u8, value_a: u8, value_b: u8, channel: u8 },
+    CcToggle {
+        cc: u8,
+        value_a: u8,
+        value_b: u8,
+        channel: u8,
+    },
     /// Set LED state (for sequencing LED changes in action lists)
-    SetLed { color: Color, animation: LedAnimation },
+    SetLed {
+        color: Color,
+        animation: LedAnimation,
+    },
     /// Delay in ms between actions in a sequence
     Delay(u16),
     /// Switch to preset by index
@@ -87,9 +96,19 @@ pub struct EncoderConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EncoderAction {
-    Cc { cc: u16, channel: u8, min: u8, max: u8 },
+    Cc {
+        cc: u16,
+        channel: u8,
+        min: u8,
+        max: u8,
+    },
     /// Two separate CC values for CW/CCW (e.g. relative encoding)
-    CcRelative { cc: u8, channel: u8, increment: u8, decrement: u8 },
+    CcRelative {
+        cc: u8,
+        channel: u8,
+        increment: u8,
+        decrement: u8,
+    },
     PresetScroll,
 }
 
@@ -114,8 +133,9 @@ pub struct LedConfig {
     pub off: Color,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Color {
+    #[default]
     Off,
     Red,
     Green,
@@ -129,8 +149,9 @@ pub enum Color {
     Custom(u8, u8, u8), // RGB
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LedAnimation {
+    #[default]
     Solid,
     Blink,
     Pulse,
@@ -138,30 +159,12 @@ pub enum LedAnimation {
 
 // --- Defaults ---
 
-impl Default for Color {
-    fn default() -> Self {
-        Color::Off
-    }
-}
-
 impl Default for LedConfig {
     fn default() -> Self {
         LedConfig {
             on: Color::Off,
             off: Color::Off,
         }
-    }
-}
-
-impl Default for ButtonMode {
-    fn default() -> Self {
-        ButtonMode::Momentary
-    }
-}
-
-impl Default for LedAnimation {
-    fn default() -> Self {
-        LedAnimation::Solid
     }
 }
 
@@ -187,7 +190,10 @@ mod tests {
                             mode: ButtonMode::RadioGroup(1),
                             on_press: {
                                 let mut a = Vec::new();
-                                let _ = a.push(Action::ProgramChange { program: 0, channel: 2 });
+                                let _ = a.push(Action::ProgramChange {
+                                    program: 0,
+                                    channel: 2,
+                                });
                                 let _ = a.push(Action::SetLed {
                                     color: Color::Blue,
                                     animation: LedAnimation::Solid,
@@ -236,10 +242,21 @@ mod tests {
             mode: ButtonMode::Momentary,
             on_press: {
                 let mut a = Vec::new();
-                let _ = a.push(Action::ProgramChange { program: 0, channel: 1 });
-                let _ = a.push(Action::Cc { cc: 69, value: 127, channel: 1 });
+                let _ = a.push(Action::ProgramChange {
+                    program: 0,
+                    channel: 1,
+                });
+                let _ = a.push(Action::Cc {
+                    cc: 69,
+                    value: 127,
+                    channel: 1,
+                });
                 let _ = a.push(Action::Delay(50));
-                let _ = a.push(Action::Cc { cc: 70, value: 0, channel: 1 });
+                let _ = a.push(Action::Cc {
+                    cc: 70,
+                    value: 0,
+                    channel: 1,
+                });
                 a
             },
             on_release: Vec::new(),
@@ -257,4 +274,3 @@ mod tests {
         assert_eq!(btn, decoded);
     }
 }
-
