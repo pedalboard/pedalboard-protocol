@@ -156,7 +156,10 @@ impl LedRing {
             }
             Renderer::Single(c, pos) => {
                 let mut frame = [Rgb::BLACK; LEDS_PER_RING];
-                frame[CLOCK[(pos as usize) % 12]] = c;
+                let p = (pos as usize) % 12;
+                frame[CLOCK[p]] = c;
+                frame[CLOCK[(p + 11) % 12]] = c; // neighbor left
+                frame[CLOCK[(p + 1) % 12]] = c; // neighbor right
                 frame
             }
             Renderer::Dots(c, count) => {
@@ -175,12 +178,8 @@ impl LedRing {
         match self.animation.modifier {
             Modifier::Solid => frame,
             Modifier::Glow => {
-                for (i, px) in frame.iter_mut().enumerate() {
-                    if i % 2 == 1 {
-                        *px = Rgb::BLACK;
-                    } else {
-                        *px = px.scale(32); // 1/8 brightness + every 2nd LED off
-                    }
+                for px in frame.iter_mut() {
+                    *px = px.scale(32); // 1/8 brightness, preserves spatial pattern
                 }
                 frame
             }
@@ -314,15 +313,14 @@ mod tests {
     }
 
     #[test]
-    fn glow_dims_and_alternates() {
+    fn glow_dims_uniformly() {
         let mut ring = LedRing::default();
         ring.set(RingAnimation::glow(Rgb::new(255, 255, 255)));
         let frame = ring.render(0);
-        // Even indices: dimmed. Odd indices: black.
-        assert_eq!(frame[0], Rgb::new(32, 32, 32));
-        assert_eq!(frame[1], Rgb::BLACK);
-        assert_eq!(frame[2], Rgb::new(32, 32, 32));
-        assert_eq!(frame[3], Rgb::BLACK);
+        // All LEDs dimmed uniformly to 1/8
+        assert!(frame
+            .iter()
+            .all(|px| px.r == 32 && px.g == 32 && px.b == 32));
     }
 
     #[test]
