@@ -351,6 +351,7 @@ mod tests {
             buttons,
             encoders: heapless::Vec::new(),
             analog: heapless::Vec::new(),
+            defaults: Default::default(),
         }
     }
 
@@ -410,6 +411,7 @@ mod tests {
             buttons,
             encoders: heapless::Vec::new(),
             analog: heapless::Vec::new(),
+            defaults: Default::default(),
         };
         let mut state = PresetState::default();
 
@@ -443,6 +445,7 @@ mod tests {
             buttons,
             encoders: heapless::Vec::new(),
             analog: heapless::Vec::new(),
+            defaults: Default::default(),
         };
         let mut state = PresetState::default();
 
@@ -472,6 +475,7 @@ mod tests {
             buttons,
             encoders: heapless::Vec::new(),
             analog: heapless::Vec::new(),
+            defaults: Default::default(),
         };
         let mut state = PresetState::default();
 
@@ -502,6 +506,7 @@ mod tests {
             buttons: heapless::Vec::new(),
             encoders,
             analog: heapless::Vec::new(),
+            defaults: Default::default(),
         };
         let mut state = PresetState::default();
         state.encoder_values[0] = 64;
@@ -555,6 +560,7 @@ mod tests {
             buttons,
             encoders: heapless::Vec::new(),
             analog: heapless::Vec::new(),
+            defaults: Default::default(),
         };
         let mut state = PresetState::default();
 

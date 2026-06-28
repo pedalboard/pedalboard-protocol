@@ -25,6 +25,24 @@ impl Default for PresetState {
     }
 }
 
+impl PresetState {
+    /// Create a PresetState from a preset's declared defaults.
+    pub fn from_defaults(preset: &Preset) -> Self {
+        let mut state = Self::default();
+        for (i, &active) in preset.defaults.button_active.iter().enumerate() {
+            if i < NUM_BUTTONS {
+                state.button_active[i] = active;
+            }
+        }
+        for (i, &val) in preset.defaults.encoder_values.iter().enumerate() {
+            if i < NUM_ENCODERS {
+                state.encoder_values[i] = val;
+            }
+        }
+        state
+    }
+}
+
 /// Manages per-preset state and generates recall MIDI on switch.
 #[derive(Clone)]
 pub struct PresetStateStore {
@@ -69,6 +87,23 @@ impl PresetStateStore {
     /// Reset all state (presets changed, state is stale).
     pub fn clear(&mut self) {
         *self = Self::new();
+    }
+
+    /// Set state for a specific preset slot.
+    pub fn set_state(&mut self, index: usize, state: PresetState) {
+        if index < MAX_PRESETS {
+            self.states[index] = state;
+        }
+    }
+
+    /// Reset state using preset defaults (after upload / first boot).
+    /// Each preset's declared initial state is applied.
+    pub fn apply_defaults(&mut self, presets: &[&Preset]) {
+        for (i, preset) in presets.iter().enumerate() {
+            if i < MAX_PRESETS {
+                self.states[i] = PresetState::from_defaults(preset);
+            }
+        }
     }
 
     /// Return a cleared EEPROM buffer (for writing after preset upload).
@@ -248,6 +283,7 @@ mod tests {
             buttons,
             encoders,
             analog: Vec::new(),
+            defaults: Default::default(),
         }
     }
 
@@ -343,5 +379,26 @@ mod tests {
     fn eeprom_invalid_magic_returns_none() {
         let buf = [0xFFu8; 128];
         assert!(PresetStateStore::from_eeprom(&buf).is_none());
+    }
+
+    #[test]
+    fn from_defaults_applies_initial_state() {
+        use crate::config::InitialState;
+
+        let mut preset = make_preset();
+        let mut btn_active = Vec::new();
+        btn_active.push(true).ok(); // button A = on
+        let mut enc_vals = Vec::new();
+        enc_vals.push(64).ok(); // encoder 0 = 64
+        preset.defaults = InitialState {
+            button_active: btn_active,
+            encoder_values: enc_vals,
+        };
+
+        let state = PresetState::from_defaults(&preset);
+        assert!(state.button_active[0]);
+        assert!(!state.button_active[1]);
+        assert_eq!(state.encoder_values[0], 64);
+        assert_eq!(state.encoder_values[1], 0);
     }
 }

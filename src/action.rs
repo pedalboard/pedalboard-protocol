@@ -126,6 +126,7 @@ mod tests {
             buttons,
             encoders: Vec::new(),
             analog: Vec::new(),
+            defaults: Default::default(),
         }
     }
 
@@ -251,6 +252,7 @@ mod tests {
             buttons: Vec::new(),
             encoders,
             analog: Vec::new(),
+            defaults: Default::default(),
         }
     }
 
@@ -324,6 +326,7 @@ mod tests {
             buttons: Vec::new(),
             encoders: Vec::new(),
             analog,
+            defaults: Default::default(),
         };
         let msg = analog_cc(&preset, 0, 2048, 4095).unwrap();
         assert_eq!(msg.data[0], 0xB0);
@@ -349,6 +352,7 @@ mod tests {
             buttons: Vec::new(),
             encoders: Vec::new(),
             analog,
+            defaults: Default::default(),
         };
         // Full deflection
         let msg = analog_cc(&preset, 0, 4095, 4095).unwrap();
@@ -365,6 +369,7 @@ mod tests {
             buttons: Vec::new(),
             encoders: Vec::new(),
             analog: Vec::new(),
+            defaults: Default::default(),
         };
         assert!(analog_cc(&preset, 0, 2048, 4095).is_none());
     }
