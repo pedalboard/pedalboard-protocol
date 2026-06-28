@@ -1,7 +1,15 @@
 //! Pedalboard configuration types shared between CLI and firmware.
+//!
+//! **IMPORTANT:** When changing `Preset`, `ButtonConfig`, `EncoderConfig`, `AnalogConfig`,
+//! `Action`, or any type serialized into flash, bump `PRESET_SCHEMA_VERSION` below.
+//! The firmware uses this to reject stale presets on boot.
 
 use heapless::{String, Vec};
 use serde::{Deserialize, Serialize};
+
+/// Bump when any struct that is postcard-serialized into preset flash changes layout.
+/// Must match `FORMAT_VERSION` in `pedalboard-midi/src/preset_format.rs`.
+pub const PRESET_SCHEMA_VERSION: u8 = 1;
 
 pub const MAX_PRESETS: usize = 32;
 pub const MAX_BUTTONS: usize = 6;
