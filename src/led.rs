@@ -46,9 +46,7 @@ pub enum Renderer {
     /// Single LED at clock position (0–11).
     Single(Rgb, u8),
     /// N evenly-spaced LEDs (1,2,3,4,6,12).
-    Wings(Rgb, u8),
-    /// Hue spread across ring.
-    Rainbow,
+    Dots(Rgb, u8),
 }
 
 /// Temporal modifier — how rendered pixels change over time.
@@ -65,6 +63,8 @@ pub enum Modifier {
     Pulse,
     /// Rotate pattern clockwise, one step per ~100ms.
     Rotate,
+    /// Cycle hue over time (ignores original color, keeps lit/unlit pattern).
+    ColorCycle,
 }
 
 /// Complete ring animation state.
@@ -169,19 +169,12 @@ impl LedRing {
                 frame[CLOCK[(pos as usize) % 12]] = c;
                 frame
             }
-            Renderer::Wings(c, count) => {
+            Renderer::Dots(c, count) => {
                 let mut frame = [Rgb::BLACK; LEDS_PER_RING];
                 let n = (count as usize).clamp(1, 12);
                 let spacing = LEDS_PER_RING / n;
                 for i in 0..n {
                     frame[CLOCK[(i * spacing) % 12]] = c;
-                }
-                frame
-            }
-            Renderer::Rainbow => {
-                let mut frame = [Rgb::BLACK; LEDS_PER_RING];
-                for i in 0..LEDS_PER_RING {
-                    frame[CLOCK[i]] = hue_to_rgb((i * 255 / LEDS_PER_RING) as u8);
                 }
                 frame
             }
@@ -226,6 +219,16 @@ impl LedRing {
                     rotated[(i + shift) % LEDS_PER_RING] = frame[i];
                 }
                 rotated
+            }
+            Modifier::ColorCycle => {
+                let hue = (self.tick * 3) as u8;
+                let color = hue_to_rgb(hue);
+                for px in frame.iter_mut() {
+                    if *px != Rgb::BLACK {
+                        *px = color;
+                    }
+                }
+                frame
             }
         }
     }
@@ -368,7 +371,7 @@ mod tests {
         let mut ring = LedRing::default();
         let c = Rgb::new(0, 255, 0);
         ring.set(RingAnimation {
-            renderer: Renderer::Wings(c, 2),
+            renderer: Renderer::Dots(c, 2),
             modifier: Modifier::Solid,
         });
         let frame = ring.render();
@@ -380,7 +383,7 @@ mod tests {
     fn wings_3_lights_three() {
         let mut ring = LedRing::default();
         ring.set(RingAnimation {
-            renderer: Renderer::Wings(Rgb::new(0, 0, 255), 3),
+            renderer: Renderer::Dots(Rgb::new(0, 0, 255), 3),
             modifier: Modifier::Solid,
         });
         let frame = ring.render();
@@ -430,17 +433,6 @@ mod tests {
     }
 
     #[test]
-    fn rainbow_all_different() {
-        let mut ring = LedRing::default();
-        ring.set(RingAnimation {
-            renderer: Renderer::Rainbow,
-            modifier: Modifier::Solid,
-        });
-        let frame = ring.render();
-        let lit = frame.iter().filter(|px| **px != Rgb::BLACK).count();
-        assert_eq!(lit, 12);
-    }
-
     #[test]
     fn scale_zero_is_black() {
         assert_eq!(Rgb::new(255, 128, 64).scale(0), Rgb::BLACK);

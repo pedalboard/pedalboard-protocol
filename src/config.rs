@@ -144,9 +144,15 @@ pub struct LedConfig {
     pub on: Color,
     /// Color when inactive/off (None = LED off)
     pub off: Color,
-    /// Animation when active (default: Solid)
+    /// Animation modifier when active (default: Solid)
     #[serde(default)]
     pub animation: LedAnimation,
+    /// Spatial renderer (default: Solid — all 12 LEDs)
+    #[serde(default)]
+    pub renderer: LedRenderer,
+    /// Renderer parameter (fill count, wing count, single position)
+    #[serde(default)]
+    pub renderer_param: u8,
 }
 
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -171,6 +177,21 @@ pub enum LedAnimation {
     Solid,
     Blink,
     Pulse,
+    Rotate,
+    ColorCycle,
+}
+
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LedRenderer {
+    /// All 12 LEDs same color
+    #[default]
+    Solid,
+    /// Partial arc (param = count 1-12)
+    Fill,
+    /// Single LED (param = clock position 0-11)
+    Single,
+    /// N evenly-spaced LEDs (param = count 1-6)
+    Dots,
 }
 
 // --- Defaults ---
@@ -181,6 +202,8 @@ impl Default for LedConfig {
             on: Color::Off,
             off: Color::Off,
             animation: LedAnimation::Solid,
+            renderer: LedRenderer::Solid,
+            renderer_param: 0,
         }
     }
 }
@@ -204,6 +227,8 @@ mod tests {
                                 on: Color::Blue,
                                 off: Color::Off,
                                 animation: LedAnimation::Solid,
+                                renderer: LedRenderer::Solid,
+                                renderer_param: 0,
                             },
                             mode: ButtonMode::RadioGroup(1),
                             on_press: {
@@ -258,6 +283,8 @@ mod tests {
                 on: Color::Green,
                 off: Color::Off,
                 animation: LedAnimation::Solid,
+                renderer: LedRenderer::Solid,
+                renderer_param: 0,
             },
             mode: ButtonMode::Momentary,
             on_press: {
