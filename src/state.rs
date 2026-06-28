@@ -66,6 +66,11 @@ impl PresetStateStore {
         self.states[self.active as usize] = working.clone();
     }
 
+    /// Reset all state (presets changed, state is stale).
+    pub fn clear(&mut self) {
+        *self = Self::new();
+    }
+
     /// Switch to a new preset. Saves current working state, loads new state,
     /// and returns MIDI messages to recall the new preset's state to external gear.
     pub fn switch(
