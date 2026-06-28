@@ -26,6 +26,7 @@ impl Default for PresetState {
 }
 
 /// Manages per-preset state and generates recall MIDI on switch.
+#[derive(Clone)]
 pub struct PresetStateStore {
     states: [PresetState; MAX_PRESETS],
     active: u8,
@@ -58,6 +59,11 @@ impl PresetStateStore {
     /// Current active preset index.
     pub fn active_index(&self) -> u8 {
         self.active
+    }
+
+    /// Save working state into the active preset slot (for serialization without switching).
+    pub fn save_working(&mut self, working: &PresetState) {
+        self.states[self.active as usize] = working.clone();
     }
 
     /// Switch to a new preset. Saves current working state, loads new state,
@@ -107,6 +113,70 @@ impl PresetStateStore {
         }
 
         recall
+    }
+}
+
+// --- EEPROM persistence (AT24CS01: 128 bytes) ---
+
+const EEPROM_MAGIC: u8 = 0xED;
+const EEPROM_HEADER_SIZE: usize = 2; // magic + active_preset
+const PRESET_STATE_SIZE: usize = 14; // 6 bools + 6 cycle + 2 encoder
+/// Maximum presets that fit in 128 bytes
+pub const EEPROM_MAX_PRESETS: usize = (128 - EEPROM_HEADER_SIZE) / PRESET_STATE_SIZE; // = 9
+
+impl PresetState {
+    /// Serialize to a 14-byte buffer.
+    pub fn to_bytes(&self, buf: &mut [u8; PRESET_STATE_SIZE]) {
+        for (i, &active) in self.button_active.iter().enumerate() {
+            buf[i] = active as u8;
+        }
+        buf[NUM_BUTTONS..NUM_BUTTONS * 2].copy_from_slice(&self.cycle_index);
+        buf[12] = self.encoder_values[0];
+        buf[13] = self.encoder_values[1];
+    }
+
+    /// Deserialize from a 14-byte buffer.
+    pub fn from_bytes(buf: &[u8; PRESET_STATE_SIZE]) -> Self {
+        let mut state = Self::default();
+        for (i, &b) in buf[..NUM_BUTTONS].iter().enumerate() {
+            state.button_active[i] = b != 0;
+        }
+        state.cycle_index.copy_from_slice(&buf[NUM_BUTTONS..NUM_BUTTONS * 2]);
+        state.encoder_values[0] = buf[12];
+        state.encoder_values[1] = buf[13];
+        state
+    }
+}
+
+impl PresetStateStore {
+    /// Serialize entire store to EEPROM buffer (128 bytes).
+    /// Layout: [magic][active_preset][state0..stateN]
+    pub fn to_eeprom(&self, buf: &mut [u8; 128]) {
+        buf.fill(0xFF);
+        buf[0] = EEPROM_MAGIC;
+        buf[1] = self.active;
+        for i in 0..EEPROM_MAX_PRESETS {
+            let offset = EEPROM_HEADER_SIZE + i * PRESET_STATE_SIZE;
+            let mut state_buf = [0u8; PRESET_STATE_SIZE];
+            self.states[i].to_bytes(&mut state_buf);
+            buf[offset..offset + PRESET_STATE_SIZE].copy_from_slice(&state_buf);
+        }
+    }
+
+    /// Deserialize from EEPROM buffer. Returns None if magic doesn't match.
+    pub fn from_eeprom(buf: &[u8; 128]) -> Option<Self> {
+        if buf[0] != EEPROM_MAGIC {
+            return None;
+        }
+        let mut store = Self::new();
+        store.active = buf[1];
+        for i in 0..EEPROM_MAX_PRESETS {
+            let offset = EEPROM_HEADER_SIZE + i * PRESET_STATE_SIZE;
+            let state_buf: &[u8; PRESET_STATE_SIZE] =
+                buf[offset..offset + PRESET_STATE_SIZE].try_into().ok()?;
+            store.states[i] = PresetState::from_bytes(state_buf);
+        }
+        Some(store)
     }
 }
 
@@ -229,5 +299,35 @@ mod tests {
 
         // Should contain CC 7 = 64
         assert!(recall.iter().any(|m| m.data == [0xB0, 7, 64]));
+    }
+
+    #[test]
+    fn eeprom_roundtrip() {
+        let mut store = PresetStateStore::new();
+        store.states[0].button_active[0] = true;
+        store.states[0].button_active[3] = true;
+        store.states[0].cycle_index[2] = 5;
+        store.states[0].encoder_values[0] = 100;
+        store.states[0].encoder_values[1] = 42;
+        store.states[1].button_active[5] = true;
+        store.active = 1;
+
+        let mut buf = [0u8; 128];
+        store.to_eeprom(&mut buf);
+
+        let restored = PresetStateStore::from_eeprom(&buf).unwrap();
+        assert_eq!(restored.active_index(), 1);
+        assert!(restored.states[0].button_active[0]);
+        assert!(restored.states[0].button_active[3]);
+        assert_eq!(restored.states[0].cycle_index[2], 5);
+        assert_eq!(restored.states[0].encoder_values[0], 100);
+        assert_eq!(restored.states[0].encoder_values[1], 42);
+        assert!(restored.states[1].button_active[5]);
+    }
+
+    #[test]
+    fn eeprom_invalid_magic_returns_none() {
+        let buf = [0xFFu8; 128];
+        assert!(PresetStateStore::from_eeprom(&buf).is_none());
     }
 }
