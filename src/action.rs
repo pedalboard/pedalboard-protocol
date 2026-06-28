@@ -3,6 +3,7 @@
 use crate::config::{Action, EncoderAction, Preset};
 
 /// A MIDI message ready to send (up to 3 bytes).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MidiMessage {
     pub data: [u8; 3],
     pub len: usize,

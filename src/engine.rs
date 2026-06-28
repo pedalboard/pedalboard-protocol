@@ -53,9 +53,16 @@ pub enum DisplayEvent {
     LongPressCancel,
 }
 
+/// A single step in an action sequence: either a MIDI message or a delay.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionStep {
+    Send(MidiMessage),
+    Delay(u16),
+}
+
 /// Result of processing an input event.
 pub struct EngineResult {
-    pub midi: heapless::Vec<MidiMessage, 8>,
+    pub midi: heapless::Vec<ActionStep, 8>,
     pub system: heapless::Vec<SystemAction, 2>,
     pub display: heapless::Vec<DisplayEvent, 2>,
     pub led_dirty: bool,
@@ -171,14 +178,14 @@ pub fn process_encoder(
         EncoderAction::Cc { cc, channel, .. } => {
             result
                 .midi
-                .push(MidiMessage {
+                .push(ActionStep::Send(MidiMessage {
                     data: [
                         0xB0 | (channel - 1),
                         *cc as u8,
                         state.encoder_values[enc_idx],
                     ],
                     len: 3,
-                })
+                }))
                 .ok();
         }
         EncoderAction::CcRelative {
@@ -193,10 +200,10 @@ pub fn process_encoder(
             };
             result
                 .midi
-                .push(MidiMessage {
+                .push(ActionStep::Send(MidiMessage {
                     data: [0xB0 | (channel - 1), *cc, val],
                     len: 3,
-                })
+                }))
                 .ok();
         }
         EncoderAction::PresetScroll => match direction {
@@ -249,7 +256,7 @@ pub fn process_analog(preset: &Preset, analog_idx: usize, raw: u16, adc_max: u16
                 value: msg.data[2],
             })
             .ok();
-        result.midi.push(msg).ok();
+        result.midi.push(ActionStep::Send(msg)).ok();
     }
     result
 }
@@ -257,7 +264,7 @@ pub fn process_analog(preset: &Preset, analog_idx: usize, raw: u16, adc_max: u16
 fn execute_actions(
     actions: &heapless::Vec<Action, MAX_ACTIONS>,
     cycle_values: &heapless::Vec<u8, MAX_CYCLE_VALUES>,
-    midi: &mut heapless::Vec<MidiMessage, 8>,
+    midi: &mut heapless::Vec<ActionStep, 8>,
     system: &mut heapless::Vec<SystemAction, 2>,
     cycle_index: &mut u8,
 ) {
@@ -269,6 +276,9 @@ fn execute_actions(
             Action::PresetPrev => {
                 system.push(SystemAction::PresetPrev).ok();
             }
+            Action::Delay(ms) => {
+                midi.push(ActionStep::Delay(*ms)).ok();
+            }
             Action::CcCycle {
                 cc,
                 channel,
@@ -277,10 +287,10 @@ fn execute_actions(
                 if !cycle_values.is_empty() {
                     let idx = (*cycle_index as usize) % cycle_values.len();
                     let value = cycle_values[idx];
-                    midi.push(MidiMessage {
+                    midi.push(ActionStep::Send(MidiMessage {
                         data: [0xB0 | (channel - 1), *cc, value],
                         len: 3,
-                    })
+                    }))
                     .ok();
                     if *reverse {
                         *cycle_index = if *cycle_index == 0 {
@@ -295,7 +305,7 @@ fn execute_actions(
             }
             _ => {
                 if let Some(msg) = action_to_midi(action) {
-                    midi.push(msg).ok();
+                    midi.push(ActionStep::Send(msg)).ok();
                 }
             }
         }
@@ -353,7 +363,7 @@ mod tests {
         assert!(state.button_active[0]);
         assert!(r.led_dirty);
         assert_eq!(r.midi.len(), 1);
-        assert_eq!(r.midi[0].data, [0xB0, 80, 127]);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 80, 127]));
     }
 
     #[test]
@@ -364,7 +374,7 @@ mod tests {
         process_button(&mut state, &preset, 0, ButtonEvent::Press);
         let r = process_button(&mut state, &preset, 0, ButtonEvent::Press);
         assert!(!state.button_active[0]);
-        assert_eq!(r.midi[0].data, [0xB0, 80, 127]); // on_press always fires
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 80, 127]));
     }
 
     #[test]
@@ -405,11 +415,11 @@ mod tests {
 
         let r = process_button(&mut state, &preset, 0, ButtonEvent::Press);
         assert!(state.button_active[0]);
-        assert_eq!(r.midi[0].data, [0x90, 60, 127]);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0x90, 60, 127]));
 
         let r = process_button(&mut state, &preset, 0, ButtonEvent::Release);
         assert!(!state.button_active[0]);
-        assert_eq!(r.midi[0].data, [0x80, 60, 0]);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0x80, 60, 0]));
     }
 
     #[test]
@@ -498,7 +508,7 @@ mod tests {
 
         let r = process_encoder(&mut state, &preset, 0, EncoderDirection::Clockwise, 1);
         assert_eq!(state.encoder_values[0], 65);
-        assert_eq!(r.midi[0].data, [0xB0, 7, 65]);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 7, 65]));
         assert_eq!(r.display.len(), 1);
         match &r.display[0] {
             DisplayEvent::EncoderOverlay { side, label, value } => {
@@ -508,5 +518,50 @@ mod tests {
             }
             _ => panic!("expected EncoderOverlay"),
         }
+    }
+
+    #[test]
+    fn delay_in_action_sequence() {
+        let mut buttons: heapless::Vec<ButtonConfig, MAX_BUTTONS> = heapless::Vec::new();
+        let mut on_press: heapless::Vec<Action, MAX_ACTIONS> = heapless::Vec::new();
+        on_press
+            .push(Action::Cc {
+                cc: 1,
+                value: 127,
+                channel: 1,
+            })
+            .ok();
+        on_press.push(Action::Delay(50)).ok();
+        on_press
+            .push(Action::Cc {
+                cc: 2,
+                value: 0,
+                channel: 1,
+            })
+            .ok();
+        buttons
+            .push(ButtonConfig {
+                label: Label::new(),
+                color: LedConfig::default(),
+                mode: ButtonMode::Momentary,
+                on_press,
+                on_release: heapless::Vec::new(),
+                on_long_press: heapless::Vec::new(),
+                cycle_values: heapless::Vec::new(),
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons,
+            encoders: heapless::Vec::new(),
+            analog: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+
+        let r = process_button(&mut state, &preset, 0, ButtonEvent::Press);
+        assert_eq!(r.midi.len(), 3);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 1, 127]));
+        assert_eq!(r.midi[1], ActionStep::Delay(50));
+        assert!(matches!(&r.midi[2], ActionStep::Send(m) if m.data == [0xB0, 2, 0]));
     }
 }
