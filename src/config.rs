@@ -24,6 +24,29 @@ pub type Label = String<MAX_LABEL_LEN>;
 /// PE resource ID for global configuration (presets use 0x00..0x1F).
 pub const GLOBAL_CONFIG_RESOURCE: u8 = 0x7F;
 
+/// PE resource ID for system commands.
+pub const SYSTEM_COMMAND_RESOURCE: u8 = 0x7E;
+
+/// System command identifiers (body of PE Set to resource 0x7E).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SystemCommand {
+    Reboot = 0x01,
+    Bootloader = 0x02,
+    FactoryReset = 0x03,
+}
+
+impl SystemCommand {
+    pub fn from_byte(b: u8) -> Option<Self> {
+        match b {
+            0x01 => Some(Self::Reboot),
+            0x02 => Some(Self::Bootloader),
+            0x03 => Some(Self::FactoryReset),
+            _ => None,
+        }
+    }
+}
+
 /// System-wide configuration, independent of presets.
 /// Replaces OpenDeck global settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
