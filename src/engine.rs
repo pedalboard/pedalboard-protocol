@@ -695,6 +695,296 @@ mod tests {
     }
 
     #[test]
+    fn encoder_cc_counter_clockwise_decrements() {
+        let mut encoders: heapless::Vec<EncoderConfig, MAX_ENCODERS> = heapless::Vec::new();
+        encoders
+            .push(EncoderConfig {
+                label: Label::try_from("Vol").unwrap(),
+                action: EncoderAction::Cc {
+                    cc: 7,
+                    channel: 1,
+                    min: 0,
+                    max: 127,
+                },
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders,
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+        state.encoder_values[0] = 64;
+
+        let r = process_encoder(
+            &mut state,
+            &preset,
+            0,
+            EncoderDirection::CounterClockwise,
+            1,
+        );
+        assert_eq!(state.encoder_values[0], 63);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 7, 63]));
+    }
+
+    #[test]
+    fn encoder_cc_multi_step_acceleration() {
+        let mut encoders: heapless::Vec<EncoderConfig, MAX_ENCODERS> = heapless::Vec::new();
+        encoders
+            .push(EncoderConfig {
+                label: Label::try_from("Gain").unwrap(),
+                action: EncoderAction::Cc {
+                    cc: 7,
+                    channel: 1,
+                    min: 0,
+                    max: 127,
+                },
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders,
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+        state.encoder_values[0] = 50;
+
+        // 4 steps CW: 50 → 54, single MIDI message with final value
+        let r = process_encoder(&mut state, &preset, 0, EncoderDirection::Clockwise, 4);
+        assert_eq!(state.encoder_values[0], 54);
+        assert_eq!(r.midi.len(), 1);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 7, 54]));
+    }
+
+    #[test]
+    fn encoder_cc_clamps_at_max() {
+        let mut encoders: heapless::Vec<EncoderConfig, MAX_ENCODERS> = heapless::Vec::new();
+        encoders
+            .push(EncoderConfig {
+                label: Label::new(),
+                action: EncoderAction::Cc {
+                    cc: 7,
+                    channel: 1,
+                    min: 0,
+                    max: 100,
+                },
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders,
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+        state.encoder_values[0] = 99;
+
+        // 5 steps CW from 99, max=100 → clamps at 100
+        let r = process_encoder(&mut state, &preset, 0, EncoderDirection::Clockwise, 5);
+        assert_eq!(state.encoder_values[0], 100);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data[2] == 100));
+    }
+
+    #[test]
+    fn encoder_cc_clamps_at_min() {
+        let mut encoders: heapless::Vec<EncoderConfig, MAX_ENCODERS> = heapless::Vec::new();
+        encoders
+            .push(EncoderConfig {
+                label: Label::new(),
+                action: EncoderAction::Cc {
+                    cc: 7,
+                    channel: 1,
+                    min: 20,
+                    max: 127,
+                },
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders,
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+        state.encoder_values[0] = 21;
+
+        // 5 steps CCW from 21, min=20 → clamps at 20
+        let r = process_encoder(
+            &mut state,
+            &preset,
+            0,
+            EncoderDirection::CounterClockwise,
+            5,
+        );
+        assert_eq!(state.encoder_values[0], 20);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data[2] == 20));
+    }
+
+    #[test]
+    fn encoder_relative_sends_increment_decrement() {
+        let mut encoders: heapless::Vec<EncoderConfig, MAX_ENCODERS> = heapless::Vec::new();
+        encoders
+            .push(EncoderConfig {
+                label: Label::try_from("FX").unwrap(),
+                action: EncoderAction::CcRelative {
+                    cc: 16,
+                    channel: 1,
+                    increment: 65,
+                    decrement: 63,
+                },
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders,
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+
+        let r = process_encoder(&mut state, &preset, 0, EncoderDirection::Clockwise, 1);
+        assert_eq!(r.midi.len(), 1);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 16, 65]));
+
+        let r = process_encoder(
+            &mut state,
+            &preset,
+            0,
+            EncoderDirection::CounterClockwise,
+            1,
+        );
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 16, 63]));
+    }
+
+    #[test]
+    fn encoder_preset_scroll_emits_system_action() {
+        let mut encoders: heapless::Vec<EncoderConfig, MAX_ENCODERS> = heapless::Vec::new();
+        encoders
+            .push(EncoderConfig {
+                label: Label::try_from("Bank").unwrap(),
+                action: EncoderAction::PresetScroll,
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders,
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+
+        let r = process_encoder(&mut state, &preset, 0, EncoderDirection::Clockwise, 1);
+        assert!(r.midi.is_empty());
+        assert_eq!(r.system.len(), 1);
+        assert_eq!(r.system[0], SystemAction::PresetNext);
+
+        let r = process_encoder(
+            &mut state,
+            &preset,
+            0,
+            EncoderDirection::CounterClockwise,
+            1,
+        );
+        assert_eq!(r.system[0], SystemAction::PresetPrev);
+    }
+
+    #[test]
+    fn encoder_invalid_index_returns_empty() {
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders: heapless::Vec::new(),
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+
+        let r = process_encoder(&mut state, &preset, 0, EncoderDirection::Clockwise, 1);
+        assert!(r.midi.is_empty());
+        assert!(r.system.is_empty());
+        assert!(r.display.is_empty());
+    }
+
+    #[test]
+    fn encoder_second_index_uses_right_display() {
+        let mut encoders: heapless::Vec<EncoderConfig, MAX_ENCODERS> = heapless::Vec::new();
+        encoders
+            .push(EncoderConfig {
+                label: Label::try_from("Vol").unwrap(),
+                action: EncoderAction::Cc {
+                    cc: 7,
+                    channel: 1,
+                    min: 0,
+                    max: 127,
+                },
+            })
+            .ok();
+        encoders
+            .push(EncoderConfig {
+                label: Label::try_from("Gain").unwrap(),
+                action: EncoderAction::Cc {
+                    cc: 8,
+                    channel: 1,
+                    min: 0,
+                    max: 127,
+                },
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons: heapless::Vec::new(),
+            encoders,
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+        state.encoder_values[1] = 50;
+
+        let r = process_encoder(&mut state, &preset, 1, EncoderDirection::Clockwise, 1);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 8, 51]));
+        match &r.display[0] {
+            DisplayEvent::EncoderOverlay { side, label, value } => {
+                assert_eq!(*side, DisplaySide::R);
+                assert_eq!(label.as_str(), "Gain");
+                assert_eq!(*value, 51);
+            }
+            _ => panic!("expected EncoderOverlay"),
+        }
+    }
+
+    #[test]
     fn delay_in_action_sequence() {
         let mut buttons: heapless::Vec<ButtonConfig, MAX_BUTTONS> = heapless::Vec::new();
         let mut on_press: heapless::Vec<Action, MAX_ACTIONS> = heapless::Vec::new();
