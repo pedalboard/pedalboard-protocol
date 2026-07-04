@@ -643,4 +643,161 @@ mod tests {
         assert!(Action::program_change(5, 0).is_none()); // channel 0
         assert!(Action::program_change(5, 17).is_none()); // channel 17
     }
+
+    /// Snapshot test: detects serialized layout changes without a PRESET_SCHEMA_VERSION bump.
+    ///
+    /// If this test fails, it means the postcard-serialized representation of Preset changed.
+    /// To fix:
+    /// 1. Determine if the change is breaking (reorder/remove/retype) or additive (append with default)
+    /// 2. If breaking: bump PRESET_SCHEMA_VERSION and update EXPECTED_SERIALIZED_LEN below
+    /// 3. If additive (new #[serde(default)] field at end): just update EXPECTED_SERIALIZED_LEN
+    ///
+    /// The test uses a fully-populated Preset to maximize sensitivity to layout changes.
+    #[test]
+    fn preset_serialization_layout_is_stable() {
+        // Canonical preset with all fields populated (maximizes change detection)
+        let preset = Preset {
+            name: Label::try_from("Stable").unwrap(),
+            buttons: {
+                let mut b = Vec::new();
+                let _ = b.push(ButtonConfig {
+                    label: Label::try_from("Btn").unwrap(),
+                    color: LedConfig {
+                        on: Color::Red,
+                        off: Color::Off,
+                        animation: LedAnimation::Blink,
+                        renderer: LedRenderer::Fill,
+                        renderer_param: 6,
+                    },
+                    mode: ButtonMode::Toggle,
+                    on_press: {
+                        let mut a = Vec::new();
+                        let _ = a.push(Action::cc(80, 127, 1).unwrap());
+                        a
+                    },
+                    on_release: {
+                        let mut a = Vec::new();
+                        let _ = a.push(Action::cc(80, 0, 1).unwrap());
+                        a
+                    },
+                    on_long_press: {
+                        let mut a = Vec::new();
+                        let _ = a.push(Action::PresetNext);
+                        a
+                    },
+                    cycle_values: {
+                        let mut cv = Vec::new();
+                        let _ = cv.push(0);
+                        let _ = cv.push(64);
+                        let _ = cv.push(127);
+                        cv
+                    },
+                    listen_cc: Some(ListenCc {
+                        cc: 100,
+                        channel: 1,
+                        mode: ListenMode::Trigger,
+                        threshold: 64,
+                    }),
+                });
+                b
+            },
+            encoders: {
+                let mut e = Vec::new();
+                let _ = e.push(EncoderConfig {
+                    label: Label::try_from("Vol").unwrap(),
+                    action: EncoderAction::Cc {
+                        cc: 7,
+                        channel: 1,
+                        min: 0,
+                        max: 127,
+                    },
+                });
+                e
+            },
+            analog: {
+                let mut a = Vec::new();
+                let _ = a.push(AnalogConfig {
+                    label: Label::try_from("Wah").unwrap(),
+                    cc: 11,
+                    channel: 1,
+                    min: 0,
+                    max: 127,
+                });
+                a
+            },
+            defaults: InitialState {
+                button_active: {
+                    let mut v = Vec::new();
+                    let _ = v.push(true);
+                    v
+                },
+                encoder_values: {
+                    let mut v = Vec::new();
+                    let _ = v.push(100);
+                    v
+                },
+            },
+            on_enter: {
+                let mut a = Vec::new();
+                let _ = a.push(Action::program_change(0, 2).unwrap());
+                a
+            },
+            on_exit: {
+                let mut a = Vec::new();
+                let _ = a.push(Action::cc(123, 0, 1).unwrap());
+                a
+            },
+            triggers: {
+                let mut t = Vec::new();
+                let _ = t.push(Trigger {
+                    match_msg: TriggerMatch::Cc {
+                        cc: 80,
+                        channel: 1,
+                        value_min: 64,
+                        value_max: 127,
+                    },
+                    action: TriggerAction::Activate(0),
+                });
+                t
+            },
+        };
+
+        let mut buf = [0u8; 512];
+        let bytes = postcard::to_slice(&preset, &mut buf).unwrap();
+
+        // FNV-1a hash of serialized bytes — detects any layout change.
+        // To fix a failure:
+        // 1. If breaking (reorder/remove/retype): bump PRESET_SCHEMA_VERSION
+        // 2. If additive (new #[serde(default)] at end): no version bump needed
+        // 3. In both cases: update EXPECTED_HASH to the value shown in the failure message
+        fn fnv1a(data: &[u8]) -> u32 {
+            let mut hash: u32 = 0x811c_9dc5;
+            for &b in data {
+                hash ^= b as u32;
+                hash = hash.wrapping_mul(0x0100_0193);
+            }
+            hash
+        }
+
+        let hash = fnv1a(bytes);
+        const EXPECTED_HASH: u32 = 0x087d_6074;
+        const EXPECTED_VERSION: u8 = 5;
+
+        assert_eq!(
+            PRESET_SCHEMA_VERSION, EXPECTED_VERSION,
+            "PRESET_SCHEMA_VERSION changed — update EXPECTED_VERSION and EXPECTED_HASH"
+        );
+        assert_eq!(
+            hash,
+            EXPECTED_HASH,
+            "Serialized Preset layout changed (hash {:#010x} != expected {:#010x}).\n\
+             If layout changed, bump PRESET_SCHEMA_VERSION in config.rs.\n\
+             Then update both EXPECTED_VERSION and EXPECTED_HASH.\n\
+             Serialized bytes ({} bytes): {:02x?}",
+            hash,
+            EXPECTED_HASH,
+            bytes.len(),
+            bytes
+        );
+    }
 }
