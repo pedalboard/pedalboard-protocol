@@ -54,11 +54,15 @@ pub enum DisplayEvent {
     LongPressCancel,
 }
 
-/// A single step in an action sequence: either a MIDI message or a delay.
+/// A single step in an action sequence: either a MIDI message, a delay, or an LED change.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActionStep {
     Send(MidiMessage),
     Delay(u16),
+    SetLed {
+        color: crate::config::Color,
+        animation: crate::config::LedAnimation,
+    },
 }
 
 /// Result of processing an input event.
@@ -345,6 +349,13 @@ fn execute_actions(
                         *cycle_index = ((*cycle_index as usize + 1) % cycle_values.len()) as u8;
                     }
                 }
+            }
+            Action::SetLed { color, animation } => {
+                midi.push(ActionStep::SetLed {
+                    color: *color,
+                    animation: *animation,
+                })
+                .ok();
             }
             _ => {
                 if let Some(msg) = action_to_midi(action) {
@@ -1020,6 +1031,68 @@ mod tests {
         assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 1, 127]));
         assert_eq!(r.midi[1], ActionStep::Delay(50));
         assert!(matches!(&r.midi[2], ActionStep::Send(m) if m.data == [0xB0, 2, 0]));
+    }
+
+    #[test]
+    fn set_led_in_action_sequence() {
+        let mut buttons: heapless::Vec<ButtonConfig, MAX_BUTTONS> = heapless::Vec::new();
+        let mut on_press: heapless::Vec<Action, MAX_ACTIONS> = heapless::Vec::new();
+        on_press.push(Action::cc(3, 127, 1).unwrap()).ok();
+        on_press
+            .push(Action::SetLed {
+                color: Color::Red,
+                animation: LedAnimation::Blink,
+            })
+            .ok();
+        on_press.push(Action::Delay(100)).ok();
+        on_press
+            .push(Action::SetLed {
+                color: Color::Green,
+                animation: LedAnimation::Solid,
+            })
+            .ok();
+        buttons
+            .push(ButtonConfig {
+                label: Label::new(),
+                color: LedConfig::default(),
+                mode: ButtonMode::Momentary,
+                on_press,
+                on_release: heapless::Vec::new(),
+                on_long_press: heapless::Vec::new(),
+                cycle_values: heapless::Vec::new(),
+                listen_cc: None,
+            })
+            .ok();
+        let preset = Preset {
+            name: Label::new(),
+            buttons,
+            encoders: heapless::Vec::new(),
+            analog: heapless::Vec::new(),
+            defaults: Default::default(),
+            on_enter: heapless::Vec::new(),
+            on_exit: heapless::Vec::new(),
+            triggers: heapless::Vec::new(),
+        };
+        let mut state = PresetState::default();
+
+        let r = process_button(&mut state, &preset, 0, ButtonEvent::Press);
+        assert_eq!(r.midi.len(), 4);
+        assert!(matches!(&r.midi[0], ActionStep::Send(m) if m.data == [0xB0, 3, 127]));
+        assert_eq!(
+            r.midi[1],
+            ActionStep::SetLed {
+                color: Color::Red,
+                animation: LedAnimation::Blink
+            }
+        );
+        assert_eq!(r.midi[2], ActionStep::Delay(100));
+        assert_eq!(
+            r.midi[3],
+            ActionStep::SetLed {
+                color: Color::Green,
+                animation: LedAnimation::Solid
+            }
+        );
     }
 
     #[test]
