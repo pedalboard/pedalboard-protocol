@@ -166,6 +166,12 @@ impl Controller {
         self.state_store.current()
     }
 
+    /// Apply external state changes (e.g., from MIDI triggers).
+    pub fn save_working(&mut self, state: &PresetState) {
+        self.button_active = state.button_active;
+        self.state_store.save_working(state);
+    }
+
     /// Get the active preset index.
     pub fn active_preset(&self) -> u8 {
         self.state_store.active_index()
