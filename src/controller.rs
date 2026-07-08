@@ -227,15 +227,6 @@ impl Controller {
         self.state_store.current().encoder_values
     }
 
-    /// Milliseconds the given button has been held, or 0 if not active.
-    pub fn held_ms(&self, button_index: usize, now_ms: u32) -> u32 {
-        if button_index < NUM_BUTTONS {
-            self.long_press[button_index].held_ms(now_ms)
-        } else {
-            0
-        }
-    }
-
     /// Serialize current state for EEPROM persistence.
     pub fn save_state(&self) -> heapless::Vec<u8, 128> {
         let mut buf = [0u8; 128];
