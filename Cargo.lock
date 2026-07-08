@@ -39,16 +39,16 @@ dependencies = [
 
 [[package]]
 name = "led-ring"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fdf79089eb6480ba847e05b52a4c3fea0c3b12955479cf8c5445c7175f351a8"
+checksum = "0dbdc27542c0d9de05547ad31dfd32c1bd4e2147e095497f2bb81e8c646eb4e2"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "midi-controller"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "heapless",
  "led-ring",

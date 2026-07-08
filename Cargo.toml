@@ -1,6 +1,6 @@
 [package]
 name = "midi-controller"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Generic MIDI controller engine: button/encoder input processing, LED rendering, preset management, and MIDI-CI Property Exchange framing. #![no_std] compatible."
@@ -12,7 +12,7 @@ categories = ["no-std", "embedded"]
 heapless = { version = "0.9.3", features = ["serde"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 postcard = { version = "1.1.1", default-features = false }
-led-ring = "0.1.0"
+led-ring = "0.1.1"
 
 [features]
 default = []
