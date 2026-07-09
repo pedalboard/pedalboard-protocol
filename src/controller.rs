@@ -17,6 +17,7 @@ use crate::engine::{
     self, process_triggers, ActionStep, ButtonEvent, DisplayEvent, EngineResult, SystemAction,
 };
 use crate::long_press::{Edge, Gesture, LongPressDetector};
+use crate::routing::MidiPort;
 use crate::state::{PresetState, PresetStateStore};
 use crate::tap_tempo::TapTempo;
 
@@ -31,8 +32,12 @@ pub enum Event {
     /// Analog input (expression pedal). Raw ADC value.
     /// Calibration (min/max) is read from Config.global.
     Analog { index: u8, raw: u16 },
-    /// Incoming MIDI (for trigger processing). Up to 3 bytes.
-    IncomingMidi { data: [u8; 3], len: u8 },
+    /// Incoming MIDI message from any port.
+    Midi {
+        data: [u8; 8],
+        len: u8,
+        source: MidiPort,
+    },
     /// Periodic tick — drives long-press detection. Send every 1-10ms.
     /// No-op if no buttons are held.
     Tick,
@@ -148,7 +153,7 @@ impl<const B: usize, const E: usize> Controller<B, E> {
                 self.process_encoder(index as usize, clockwise, now_ms, config)
             }
             Event::Analog { index, raw } => self.process_analog(index as usize, raw, config),
-            Event::IncomingMidi { data, len } => {
+            Event::Midi { data, len, .. } => {
                 self.do_process_incoming_midi(&data[..len as usize], config)
             }
             Event::Tick => self.do_tick(now_ms, config),
@@ -161,7 +166,7 @@ impl<const B: usize, const E: usize> Controller<B, E> {
         if !result.midi.is_empty() {
             // Green flash: MIDI output generated
             result.mon_led = Some(crate::led::Rgb::new(0, 255, 0));
-        } else if matches!(event, Event::IncomingMidi { .. }) {
+        } else if matches!(event, Event::Midi { .. }) {
             // Blue flash: incoming MIDI processed (even if no output)
             result.mon_led = Some(crate::led::Rgb::new(0, 0, 255));
         }
@@ -1248,7 +1253,7 @@ mod tests {
         assert_eq!(result.bpm, Some(120));
     }
 
-    // --- Test 11: IncomingMidi triggers (CC trigger activates button) ---
+    // --- Test 11: Midi triggers (CC trigger activates button) ---
 
     #[test]
     fn incoming_midi_trigger_activates_button() {
@@ -1287,9 +1292,10 @@ mod tests {
 
         // Send CC#100 = 127 on channel 1
         let result = ctrl.process(
-            Event::IncomingMidi {
-                data: [0xB0, 100, 127],
+            Event::Midi {
+                data: [0xB0, 100, 127, 0, 0, 0, 0, 0],
                 len: 3,
+                source: MidiPort::USB,
             },
             0,
             &config,
@@ -1640,9 +1646,10 @@ mod tests {
 
         // Send CC#100 = 63 (below value_min=64)
         let result = ctrl.process(
-            Event::IncomingMidi {
-                data: [0xB0, 100, 63],
+            Event::Midi {
+                data: [0xB0, 100, 63, 0, 0, 0, 0, 0],
                 len: 3,
+                source: MidiPort::USB,
             },
             0,
             &config,
@@ -1734,9 +1741,10 @@ mod tests {
         let mut ctrl = Controller::new();
 
         let result = ctrl.process(
-            Event::IncomingMidi {
-                data: [0xB0, 10, 127],
+            Event::Midi {
+                data: [0xB0, 10, 127, 0, 0, 0, 0, 0],
                 len: 3,
+                source: MidiPort::USB,
             },
             100,
             &config,

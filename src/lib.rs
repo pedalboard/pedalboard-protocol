@@ -8,6 +8,7 @@ pub mod engine;
 pub mod led;
 pub mod long_press;
 pub mod property_exchange;
+pub mod routing;
 pub mod state;
 pub mod tap_tempo;
 
