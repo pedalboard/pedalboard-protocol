@@ -1,6 +1,6 @@
 [package]
 name = "midi-controller"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "Generic MIDI controller engine: button/encoder input processing, LED rendering, preset management, and MIDI-CI Property Exchange framing. #![no_std] compatible."
