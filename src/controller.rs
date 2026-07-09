@@ -65,6 +65,8 @@ pub struct Output {
     /// Mode indicator LED: color represents the active preset/bank.
     /// Set on preset change; None means no change.
     pub mode_led: Option<crate::led::Rgb>,
+    /// Reactive LED updates from incoming MIDI (CC → ring heatmap/trigger).
+    pub reactive_led: Option<engine::ReactiveResult>,
     /// Internal: pending system actions to be handled by the controller.
     pending_system: heapless::Vec<SystemAction, 2>,
 }
@@ -80,6 +82,7 @@ impl Output {
             bpm: None,
             mon_led: None,
             mode_led: None,
+            reactive_led: None,
             pending_system: heapless::Vec::new(),
         }
     }
@@ -229,6 +232,12 @@ impl<const B: usize, const E: usize> Controller<B, E> {
             Some(p) => p,
             None => return result,
         };
+
+        // Reactive LEDs: check incoming CC against preset's listen_cc bindings
+        if raw.len() >= 3 && (raw[0] & 0xF0) == 0xB0 {
+            let channel = (raw[0] & 0x0F) + 1;
+            result.reactive_led = engine::process_incoming_cc(preset, channel, raw[1], raw[2]);
+        }
 
         if raw.len() >= 2 && !preset.triggers.is_empty() {
             let mut state = self.working_state();
@@ -1935,5 +1944,118 @@ mod tests {
 
         // No triggers → no MIDI output → Mon LED should be blue (incoming processed)
         assert_eq!(result.mon_led, Some(crate::led::Rgb::new(0, 0, 255)));
+    }
+
+    #[test]
+    fn reactive_led_heatmap_on_matching_cc() {
+        use crate::config::{ButtonConfig, ButtonMode, Label, LedConfig, ListenCc, ListenMode};
+        use crate::engine::ReactiveResult;
+        use heapless::Vec as HVec;
+
+        let mut ctrl = Controller::<6, 2>::new();
+        let mut config: Config = Config::default();
+        let mut preset = Preset::default();
+        preset.name = heapless::String::try_from("Test").unwrap();
+        let btn = ButtonConfig {
+            label: Label::new(),
+            color: LedConfig::default(),
+            mode: ButtonMode::Toggle,
+            on_press: HVec::new(),
+            on_release: HVec::new(),
+            on_long_press: HVec::new(),
+            cycle_values: HVec::new(),
+            listen_cc: Some(ListenCc {
+                cc: 7,
+                channel: 1,
+                mode: ListenMode::Heatmap,
+                threshold: 64,
+            }),
+        };
+        preset.buttons.push(btn).ok();
+        config.presets.push(preset).ok();
+
+        let result = ctrl.process(
+            Event::Midi {
+                data: [0xB0, 7, 127, 0, 0, 0, 0, 0],
+                len: 3,
+                source: MidiPort::DIN,
+            },
+            0,
+            &config,
+        );
+
+        assert_eq!(result.reactive_led, Some(ReactiveResult::Heatmap(0, 12)));
+    }
+
+    #[test]
+    fn reactive_led_trigger_on_matching_cc() {
+        use crate::config::{ButtonConfig, ButtonMode, Label, LedConfig, ListenCc, ListenMode};
+        use crate::engine::ReactiveResult;
+        use heapless::Vec as HVec;
+
+        let mut ctrl = Controller::<6, 2>::new();
+        let mut config: Config = Config::default();
+        let mut preset = Preset::default();
+        preset.name = heapless::String::try_from("Test").unwrap();
+        let btn = ButtonConfig {
+            label: Label::new(),
+            color: LedConfig::default(),
+            mode: ButtonMode::Toggle,
+            on_press: HVec::new(),
+            on_release: HVec::new(),
+            on_long_press: HVec::new(),
+            cycle_values: HVec::new(),
+            listen_cc: Some(ListenCc {
+                cc: 50,
+                channel: 2,
+                mode: ListenMode::Trigger,
+                threshold: 64,
+            }),
+        };
+        preset.buttons.push(btn).ok();
+        config.presets.push(preset).ok();
+
+        // Value above threshold → active
+        let result = ctrl.process(
+            Event::Midi {
+                data: [0xB1, 50, 100, 0, 0, 0, 0, 0],
+                len: 3,
+                source: MidiPort::USB,
+            },
+            0,
+            &config,
+        );
+        assert_eq!(result.reactive_led, Some(ReactiveResult::Trigger(0, true)));
+
+        // Value below threshold → inactive
+        let result = ctrl.process(
+            Event::Midi {
+                data: [0xB1, 50, 10, 0, 0, 0, 0, 0],
+                len: 3,
+                source: MidiPort::USB,
+            },
+            0,
+            &config,
+        );
+        assert_eq!(result.reactive_led, Some(ReactiveResult::Trigger(0, false)));
+    }
+
+    #[test]
+    fn no_reactive_led_on_non_cc() {
+        let mut ctrl = Controller::<6, 2>::new();
+        let mut config: Config = Config::default();
+        config.presets.push(Preset::default()).ok();
+
+        // Note On — not a CC, no reactive LED
+        let result = ctrl.process(
+            Event::Midi {
+                data: [0x90, 60, 127, 0, 0, 0, 0, 0],
+                len: 3,
+                source: MidiPort::DIN,
+            },
+            0,
+            &config,
+        );
+        assert_eq!(result.reactive_led, None);
     }
 }
