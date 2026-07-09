@@ -2066,4 +2066,98 @@ mod tests {
         );
         assert_eq!(result.reactive_led, None);
     }
+
+    // --- state_dirty tests ---
+
+    #[test]
+    fn state_dirty_on_button_toggle() {
+        let mut ctrl = Controller::<6, 2>::new();
+        let buttons = {
+            let mut b = HVec::new();
+            b.push(ButtonConfig {
+                label: Label::new(),
+                color: LedConfig::default(),
+                mode: ButtonMode::Toggle,
+                on_press: {
+                    let mut v = HVec::new();
+                    v.push(Action::Midi {
+                        data: [0x90, 60, 127],
+                        len: 3,
+                    })
+                    .ok();
+                    v
+                },
+                on_release: HVec::new(),
+                on_long_press: HVec::new(),
+                cycle_values: HVec::new(),
+                listen_cc: None,
+            })
+            .ok();
+            b
+        };
+        let config = make_config(buttons, HVec::new());
+
+        // Press button (toggle → active, state changes)
+        let result = ctrl.process(
+            Event::ButtonEdge {
+                index: 0,
+                edge: Edge::Activate,
+            },
+            0,
+            &config,
+        );
+        assert!(
+            result.state_dirty,
+            "state_dirty should be true on button toggle"
+        );
+    }
+
+    #[test]
+    fn state_dirty_on_preset_switch() {
+        let mut ctrl = Controller::<6, 2>::new();
+        let mut config: Config = Config::default();
+        let mut preset0 = Preset::default();
+        preset0.name = heapless::String::try_from("P0").unwrap();
+        let mut preset1 = Preset::default();
+        preset1.name = heapless::String::try_from("P1").unwrap();
+        config.presets.push(preset0).ok();
+        config.presets.push(preset1).ok();
+
+        let result = ctrl.select_preset(1, &config);
+        assert!(
+            result.state_dirty,
+            "state_dirty should be true on preset switch"
+        );
+        assert!(result.preset_changed);
+    }
+
+    #[test]
+    fn state_not_dirty_on_tick() {
+        let mut ctrl = Controller::<6, 2>::new();
+        let config = make_config(HVec::new(), HVec::new());
+
+        let result = ctrl.process(Event::Tick, 100, &config);
+        assert!(!result.state_dirty);
+    }
+
+    #[test]
+    fn state_not_dirty_on_incoming_midi_without_trigger() {
+        let mut ctrl = Controller::<6, 2>::new();
+        let mut config: Config = Config::default();
+        config.presets.push(Preset::default()).ok();
+
+        let result = ctrl.process(
+            Event::Midi {
+                data: [0xB0, 7, 64, 0, 0, 0, 0, 0],
+                len: 3,
+                source: MidiPort::USB,
+            },
+            0,
+            &config,
+        );
+        assert!(
+            !result.state_dirty,
+            "incoming MIDI without trigger shouldn't dirty state"
+        );
+    }
 }
