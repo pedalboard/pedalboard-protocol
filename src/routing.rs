@@ -52,3 +52,68 @@ impl MidiOut {
         &self.data[..self.len as usize]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn port_single_bit() {
+        assert_eq!(MidiPort::DIN.bits(), 0x01);
+        assert_eq!(MidiPort::USB.bits(), 0x02);
+        assert_eq!(MidiPort::BLE.bits(), 0x04);
+    }
+
+    #[test]
+    fn port_union() {
+        let both = MidiPort::DIN | MidiPort::USB;
+        assert!(both.contains(MidiPort::DIN));
+        assert!(both.contains(MidiPort::USB));
+        assert!(!both.contains(MidiPort::BLE));
+    }
+
+    #[test]
+    fn port_all_includes_din_and_usb() {
+        assert!(MidiPort::ALL.contains(MidiPort::DIN));
+        assert!(MidiPort::ALL.contains(MidiPort::USB));
+    }
+
+    #[test]
+    fn port_empty() {
+        let empty = MidiPort::empty();
+        assert!(!empty.contains(MidiPort::DIN));
+        assert!(!empty.contains(MidiPort::USB));
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn midi_out_new_3byte() {
+        let msg = MidiOut::new(&[0x90, 60, 127], MidiPort::USB);
+        assert_eq!(msg.len, 3);
+        assert_eq!(msg.bytes(), &[0x90, 60, 127]);
+        assert_eq!(msg.dest, MidiPort::USB);
+    }
+
+    #[test]
+    fn midi_out_new_multi_dest() {
+        let msg = MidiOut::new(&[0xB0, 7, 100], MidiPort::DIN | MidiPort::USB);
+        assert!(msg.dest.contains(MidiPort::DIN));
+        assert!(msg.dest.contains(MidiPort::USB));
+        assert!(!msg.dest.contains(MidiPort::BLE));
+    }
+
+    #[test]
+    fn midi_out_8byte_ump() {
+        let data = [0x40, 0x90, 0x3C, 0x00, 0x7F, 0x00, 0x00, 0x00];
+        let msg = MidiOut::new(&data, MidiPort::ALL);
+        assert_eq!(msg.len, 8);
+        assert_eq!(msg.bytes(), &data);
+    }
+
+    #[test]
+    fn midi_out_truncates_oversize() {
+        let data = [0u8; 16]; // larger than 8
+        let msg = MidiOut::new(&data, MidiPort::DIN);
+        assert_eq!(msg.len, 8); // capped at 8
+    }
+}
