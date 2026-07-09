@@ -67,6 +67,9 @@ pub struct Output {
     pub mode_led: Option<crate::led::Rgb>,
     /// Reactive LED updates from incoming MIDI (CC → ring heatmap/trigger).
     pub reactive_led: Option<engine::ReactiveResult>,
+    /// State changed — caller should persist (EEPROM/flash).
+    /// Set on preset switch or button/encoder state change.
+    pub state_dirty: bool,
     /// Internal: pending system actions to be handled by the controller.
     pending_system: heapless::Vec<SystemAction, 2>,
 }
@@ -83,6 +86,7 @@ impl Output {
             mon_led: None,
             mode_led: None,
             reactive_led: None,
+            state_dirty: false,
             pending_system: heapless::Vec::new(),
         }
     }
@@ -406,10 +410,12 @@ impl<const B: usize, const E: usize> Controller<B, E> {
                     Edge::Activate => {
                         self.button_active[index] = true;
                         result.leds_changed = true;
+                        result.state_dirty = true;
                     }
                     Edge::Deactivate => {
                         self.button_active[index] = false;
                         result.leds_changed = true;
+                        result.state_dirty = true;
                     }
                 }
             }
@@ -559,6 +565,7 @@ impl<const B: usize, const E: usize> Controller<B, E> {
         }
         if r.led_dirty {
             result.leds_changed = true;
+            result.state_dirty = true;
         }
         for s in &r.system {
             result.pending_system.push(*s).ok();
@@ -665,6 +672,7 @@ impl<const B: usize, const E: usize> Controller<B, E> {
 
         result.preset_changed = true;
         result.leds_changed = true;
+        result.state_dirty = true;
         result.mode_led = Some(Self::preset_color(self.active_preset));
     }
 
